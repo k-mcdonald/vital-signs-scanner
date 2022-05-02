@@ -8,7 +8,6 @@ Authors:
     Kevin McDonald
     (Intern) Nico de la Fuente
 """
-#import datetime
 import time
 import asyncio
 from bleak import BleakScanner, BleakClient
@@ -35,13 +34,17 @@ class Reading:
 
     def log(self, filename):
         file = open(filename, 'a')
+        t = time.localtime()
+        current_time = time.strftime("%H:%M:%S", t)
 
         file.write("Heart rate " + self.heart_rate +",")
         file.write(" Blood oxygen " + self.blood_oxygen + ",")
-        file.write(" Temperature " + self.temperature + '\n')
-        #file.write("Time: " + now + "/n")
+        file.write(" Temperature " + self.temperature + ",")
+        file.write(" Time: " + current_time + "\n")
 
         file.close()
+    def callback(sender: int, data: bytearray):
+        print(f"{sender}: {data}")
 
 
 async def darroch_star(address, filename):
@@ -55,15 +58,17 @@ async def darroch_star(address, filename):
                 heart_rate = await client.read_gatt_char(UUID_HEART)
                 blood_oxygen = await client.read_gatt_char(UUID_SPO2)
                 temperature = await client.read_gatt_char(UUID_TEMP)
-                #now = datatime.now()
-                #current_time = now.strftime("%H:%M:%S")
+    
+                t = time.localtime()
+                current_time = time.strftime("%H:%M:%S", t)
                 print("Heart Rate: ", heart_rate)
                 print("SpO2: ", blood_oxygen)
                 print("Temperature: ", temperature)
+                print("Time: ", current_time)
 
                 reading = Reading(heart_rate, blood_oxygen, temperature)
                 reading.log(filename)
-                #time.sleep(5)
+                await asyncio.sleep(5)
                 connected = client.is_connected
         except Exception as e:
             print(e)
