@@ -74,6 +74,10 @@ class DarrochStar:
             self.start_session()
             break
 
+    def scan(self):
+        # Scan continuously for the device
+        pass
+
     def start_session(self):
         try:
             DarrochClient(self.address)
@@ -105,7 +109,7 @@ class DarrochClient:
     
     # Read Phase
     def listen(self):
-        self.client.start_notify(self.notify_cb)
+        self.client.start_notify(characteristic_uuid, self.notify_cb)
 
     def notify_cb(sender: int, data: bytearray):
         print(f"{sender}: {data}")
