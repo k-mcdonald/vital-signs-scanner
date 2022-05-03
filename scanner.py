@@ -10,6 +10,7 @@ Authors:
 """
 from time import localtime, strftime
 from asyncio import run, sleep
+from xmlrpc.client import Boolean
 from bleak import BleakClient, BleakError
 
 
@@ -25,22 +26,27 @@ UUID_HEART = "13012F01-F8C3-4F4A-A8F4-15CD926DA146"
 UUID_SPO2 = "13012F02-F8C3-4F4A-A8F4-15CD926DA146"
 UUID_TEMP = "13012F03-F8C3-4F4A-A8F4-15CD926DA146"
 #UUID_TIME = "13012F04-F8C3-4F4A-A8F4-15CD926DA146"
-TIME_FORMAT_STR = "%H:%M:%S"
+
+# Custom error definitions
+class DisconnectError(Exception):
+    pass
+
+def get_time(self):
+    TIME_FORMAT_STR = "%H:%M:%S"
+    return strftime(TIME_FORMAT_STR, localtime())
 
 class Reading:
     def __init__(self, heart_rate, blood_oxygen, temperature, time=None):
         self.heart_rate = self.data_to_str(heart_rate)
         self.blood_oxygen = self.data_to_str(blood_oxygen)
         self.temperature = self.data_to_str(temperature)
-        self.time = self.get_time() if time is None else None
+        self.time = get_time() if time is None else None
         
     def data_to_str(self, byte_array):
         return "".join(map(chr, byte_array))
     
-    def get_time(self):
-        return strftime(TIME_FORMAT_STR, localtime())
-
     def log(self, filename):
+        # TODO Standardize the format of the logs
         file = open(filename, 'a')
         file.write("Heart rate " + self.heart_rate +",")
         file.write(" Blood oxygen " + self.blood_oxygen + ",")
@@ -60,54 +66,68 @@ class MyBleak(BleakClient):
         data = run(coroutine)
         return "".join(map(chr, data))
     
-
-    
 class DarrochStar:
+    def __init__(self, address) -> None:
+        self.device_address = address
+
+        while True:
+            self.start_session()
+            break
+
+    def start_session(self):
+        try:
+            DarrochClient(self.address)
+        except DisconnectError:
+            pass
+
+
+
+# print("Attempting to reconnect")
+
+class DarrochClient:
     def __init__(self, address):
         self.client = BleakClient(address)
         self.client.set_disconnected_callback(self.disconnect_cb)
-
-        print(f"Trying to connect to {address} >:(")
-        self.connect()
-
-        self.loop()
     
-    def connect(self, retry=False):
-        while retry:
-            try:
-                run(self.client.connect(timeout=1.0))
-                print("Connected to device :D")
-                break
-            except BleakError as e:
-                print("Could not connect to device :C")
-                print(e)
+    # Connect Phase
+    def connect(self, timeout=10.0) -> Boolean:
+        """
+        Attempt to connect to device
+        """
+        try:
+            print(f"Trying to connect to {self.address} >:(")
+            run(self.client.connect(timeout=timeout))
+            print("Connected to device :D")
+        except BleakError as e:
+            print("Could not connect to device :C\n", e)
+        
+        return self.client.is_connected
     
+    # Read Phase
+    def listen(self):
+        self.client.start_notify(self.notify_cb)
+
+    def notify_cb(sender: int, data: bytearray):
+        print(f"{sender}: {data}")
+    
+    def read_data(self):
+        # TODO 
+        heart_rate = self.client.read_gatt_char(UUID_HEART)
+        blood_oxygen = self.client.read_gatt_char(UUID_SPO2)
+        temperature = self.client.read_gatt_char(UUID_TEMP)
+
+        reading = Reading(heart_rate, blood_oxygen, temperature)
+        reading.log(LOG_FILENAME)
+        run(sleep(5))
+
+    # Disconnect Phase
     def disconnect_cb(client: BleakClient):
         """
         Callback function for unexpected disconnect event
         """
-
         print(f"Client with address {client.address} got disconnected!")
-        print("Attempting to reconnect")
+        raise DisconnectError
 
-        DarrochStar.reconnect(client.address)
-
-    def reconnect(self, address):
-        # Reinitialize DarrochStar
-        self.__init__(address)
-
-    def loop(self):
-        while self.client.is_connected:
-            heart_rate = self.client.read_gatt_char(UUID_HEART)
-            blood_oxygen = self.client.read_gatt_char(UUID_SPO2)
-            temperature = self.client.read_gatt_char(UUID_TEMP)
-
-            reading = Reading(heart_rate, blood_oxygen, temperature)
-            reading.log(LOG_FILENAME)
-            run(sleep(5))
-
-            connected = self.client.is_connected
-        self.reconnect(self.client.address)
 
 if __name__ == "__main__":
     DarrochStar(DEVICE_ADDRESS)
